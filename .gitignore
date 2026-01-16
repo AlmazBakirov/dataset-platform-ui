@@ -13,3 +13,5 @@ venv/
 Thumbs.db
 
 *.log
+
+*.bak
