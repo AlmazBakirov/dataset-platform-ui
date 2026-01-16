@@ -160,4 +160,11 @@ class ApiClient:
     def admin_list_users(self) -> list[dict[str, Any]]:
         data = self._request("GET", "/admin/users")
         return data if isinstance(data, list) else []
+    
+    def admin_assign_task(self, request_id: str, labeler_username: str) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/admin/assign",
+            json={"request_id": request_id, "labeler_username": labeler_username},
+        )
 
