@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import random
+from datetime import datetime, timezone
 from typing import Any
 
 from core.api_client import ApiError
@@ -11,11 +12,14 @@ _random = random.Random(42)
 _request_counter = itertools.count(1001)
 _task_counter = itertools.count(5001)
 
-# In-memory stores
 _requests: list[dict[str, Any]] = []
 _tasks: list[dict[str, Any]] = []
 _labels_store: dict[tuple[str, str], list[str]] = {}  # (task_id, image_id) -> labels
 _uploads_store: dict[str, list[dict[str, Any]]] = {}  # request_id -> uploaded items
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _ensure_seed_data() -> None:
@@ -94,19 +98,14 @@ def mock_list_requests() -> list[dict[str, Any]]:
 # ---------- QC ----------
 def mock_qc_results(request_id: str) -> list[dict[str, Any]]:
     _ensure_seed_data()
-
-    # Simulate 25 images
     rows: list[dict[str, Any]] = []
     for i in range(1, 26):
-        dup = _random.random()
-        ai = _random.random()
-
         rows.append(
             {
                 "request_id": request_id,
                 "image_id": f"{request_id}_img_{i:03d}",
-                "duplicate_score": round(dup, 4),
-                "ai_generated_score": round(ai, 4),
+                "duplicate_score": round(_random.random(), 4),
+                "ai_generated_score": round(_random.random(), 4),
             }
         )
     return rows
@@ -126,12 +125,9 @@ def mock_get_task(task_id: str) -> dict[str, Any]:
 
     request_id = str(t.get("request_id"))
     req = next((r for r in _requests if str(r.get("id")) == request_id), None)
-
     classes = (req.get("classes") if req else None) or ["pothole", "crosswalk", "traffic_light", "road_sign"]
 
-    # 10 mock images
     images = [{"image_id": f"{task_id}_img_{i:03d}", "url": None} for i in range(1, 11)]
-
     return {
         "id": t["id"],
         "title": t.get("title", f"Task {task_id}"),
@@ -148,9 +144,35 @@ def mock_save_labels(task_id: str, image_id: str, labels: list[str]) -> dict[str
     return {"status": "ok", "task_id": task_id, "image_id": image_id, "labels": labels}
 
 
-# ---------- Uploads (presigned mock) ----------
+# ---------- Uploads: MVP (mock) ----------
+def mock_upload_files_mvp(request_id: str, packed_files: list[tuple[str, bytes, str]]) -> dict[str, Any]:
+    _ensure_seed_data()
+    rid = str(request_id)
+    items = _uploads_store.setdefault(rid, [])
+
+    for (fname, content, mime) in packed_files:
+        items.append(
+            {
+                "filename": fname,
+                "key": f"mock/{rid}/{fname}",
+                "etag": None,
+                "content_type": mime,
+                "size_bytes": len(content),
+                "created_at": _now_iso(),
+                "preview_url": None,
+            }
+        )
+
+    return {"status": "ok", "request_id": rid, "count": len(packed_files)}
+
+
+def mock_list_uploads(request_id: str) -> list[dict[str, Any]]:
+    _ensure_seed_data()
+    return list(_uploads_store.get(str(request_id), []))
+
+
+# ---------- Uploads: presigned (mock) ----------
 def mock_presign_uploads(request_id: str, files: list[dict[str, Any]]) -> dict[str, Any]:
-    # In mock we return fake URLs, but UI will NOT actually upload to them.
     uploads = []
     for f in files:
         fn = f.get("filename") or "file.bin"
@@ -168,5 +190,18 @@ def mock_presign_uploads(request_id: str, files: list[dict[str, Any]]) -> dict[s
 
 
 def mock_complete_uploads(request_id: str, uploaded: list[dict[str, Any]]) -> dict[str, Any]:
-    _uploads_store[str(request_id)] = list(uploaded)
-    return {"status": "ok", "request_id": request_id, "uploaded": uploaded}
+    rid = str(request_id)
+    items = _uploads_store.setdefault(rid, [])
+    for u in uploaded:
+        items.append(
+            {
+                "filename": u.get("filename"),
+                "key": u.get("key"),
+                "etag": u.get("etag"),
+                "content_type": None,
+                "size_bytes": None,
+                "created_at": _now_iso(),
+                "preview_url": None,
+            }
+        )
+    return {"status": "ok", "request_id": rid, "uploaded": uploaded}

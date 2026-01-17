@@ -115,13 +115,15 @@ class ApiClient:
             multipart.append(("files", (fname, content, mime)))
         return self._request("POST", f"/requests/{request_id}/uploads", files=multipart)
 
+    def list_uploads(self, request_id: str) -> list[dict[str, Any]]:
+        data = self._request("GET", f"/requests/{request_id}/uploads")
+        return data if isinstance(data, list) else []
+
     # ---------- Uploads (presigned) ----------
     def presign_uploads(self, request_id: str, files: list[dict[str, Any]]) -> dict[str, Any]:
-        # files: [{"filename": "...", "content_type": "..."}]
         return self._request("POST", "/uploads/presign", json={"request_id": request_id, "files": files})
 
     def complete_uploads(self, request_id: str, uploaded: list[dict[str, Any]]) -> dict[str, Any]:
-        # uploaded: [{"filename": "...", "key": "...", "etag": "..."}]
         return self._request("POST", "/uploads/complete", json={"request_id": request_id, "uploaded": uploaded})
 
     # ---------- QC ----------
