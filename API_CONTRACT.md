@@ -298,3 +298,13 @@ Response (200):
 Notes:
 - If backend prefers assigning existing tasks, it can accept `{ "task_id": "...", "labeler_username": "..." }` instead,
   but then UI/client should be updated accordingly.
+
+### GET /requests/{request_id}/uploads
+Response (200):
+```json
+[
+  { "filename": "string", "key": "string", "etag": "string|null", "content_type": "string|null", "size_bytes": 12345, "created_at": "string|null", "preview_url": "string|null" }
+]
+
+
+
