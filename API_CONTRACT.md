@@ -103,6 +103,64 @@ Errors:
 
 ---
 
+## 3b) Uploads (Presigned)
+
+### POST /uploads/presign
+Backend returns pre-signed URLs for direct upload to storage (S3/MinIO/etc).
+
+Request (JSON):
+```json
+{
+  "request_id": "string",
+  "files": [
+    { "filename": "string", "content_type": "string" }
+  ]
+}
+```
+
+Response (200):
+```json
+{
+  "uploads": [
+    {
+      "filename": "string",
+      "url": "string",
+      "method": "PUT",
+      "headers": { "Content-Type": "string" },
+      "key": "string"
+    }
+  ]
+}
+```
+
+Notes:
+- UI uploads each file to `url` using `method` (UI currently supports PUT).
+- `key` must be returned back to backend in `/uploads/complete`.
+
+### POST /uploads/complete
+UI notifies backend that storage uploads finished.
+
+Request (JSON):
+```json
+{
+  "request_id": "string",
+  "uploaded": [
+    { "filename": "string", "key": "string", "etag": "string|null" }
+  ]
+}
+```
+
+Response (200):
+```json
+{ "status": "ok" }
+```
+
+Errors:
+- 400 invalid request_id / payload
+- 404 request not found
+
+---
+
 ## 4) QC (Duplicates + AI-generated)
 
 ### POST /requests/{request_id}/qc/run
@@ -198,7 +256,7 @@ Errors:
 ---
 
 ## 6) Admin (optional for MVP)
-UI may call these endpoints later. Backend can return 501 until implemented.
+Backend may return 501 until implemented.
 
 ### GET /admin/users
 Response (200):
@@ -216,15 +274,27 @@ Response (200):
 ]
 ```
 
+### GET /admin/tasks
+Response (200):
+```json
+[
+  { "id": "string", "request_id": "string", "status": "string", "created_at": "string|null" }
+]
+```
+
 ### POST /admin/assign
-Assign tasks to labelers.
+Assign a request to a labeler (backend creates/assigns a task).
 
 Request (JSON):
 ```json
-{ "task_id": "string", "labeler_username": "string" }
+{ "request_id": "string", "labeler_username": "string" }
 ```
 
 Response (200):
 ```json
-{ "status": "assigned" }
+{ "status": "assigned", "task_id": "string|null" }
 ```
+
+Notes:
+- If backend prefers assigning existing tasks, it can accept `{ "task_id": "...", "labeler_username": "..." }` instead,
+  but then UI/client should be updated accordingly.
