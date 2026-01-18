@@ -4,7 +4,7 @@ __pycache__/
 *.pyd
 
 .env
-.pth
+*.pth
 .venv/
 venv/
 
