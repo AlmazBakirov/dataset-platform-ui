@@ -205,3 +205,27 @@ def mock_complete_uploads(request_id: str, uploaded: list[dict[str, Any]]) -> di
             }
         )
     return {"status": "ok", "request_id": rid, "uploaded": uploaded}
+
+def mock_task_progress(task_id: str) -> dict[str, Any]:
+    _ensure_seed_data()
+
+    task = mock_get_task(task_id)
+    images = task.get("images", [])
+    total = len(images)
+
+    labeled = 0
+    for img in images:
+        image_id = str(img.get("image_id"))
+        if _labels_store.get((str(task_id), image_id)):
+            labeled += 1
+
+    return {"task_id": str(task_id), "total_images": total, "labeled_images": labeled}
+
+
+def mock_complete_task(task_id: str) -> dict[str, Any]:
+    _ensure_seed_data()
+    t = next((x for x in _tasks if str(x.get("id")) == str(task_id)), None)
+    if not t:
+        raise ApiError(status_code=404, message=f"Task not found (mock): {task_id}")
+    t["status"] = "done"
+    return {"status": "ok", "task_id": str(task_id)}

@@ -145,6 +145,15 @@ class ApiClient:
 
     def save_labels(self, task_id: str, image_id: str, labels: list[str]) -> dict[str, Any]:
         return self._request("POST", f"/tasks/{task_id}/labels", json={"image_id": image_id, "labels": labels})
+    
+    def task_progress(self, task_id: str) -> dict[str, Any]:
+        data = self._request("GET", f"/tasks/{task_id}/progress")
+        return data if isinstance(data, dict) else {}
+
+    def complete_task(self, task_id: str) -> dict[str, Any]:
+        data = self._request("POST", f"/tasks/{task_id}/complete")
+        return data if isinstance(data, dict) else {"status": "ok"}
+
 
     # ---------- Admin ----------
     def admin_list_requests(self) -> list[dict[str, Any]]:

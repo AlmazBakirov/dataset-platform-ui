@@ -248,12 +248,27 @@ Response (200):
 ```json
 { "task_id": "string", "image_id": "string", "status": "saved" }
 ```
+## Labeling progress & completion
+
+### GET /tasks/{task_id}/progress
+Response (200):
+```json
+{
+  "task_id": "string",
+  "total_images": 10,
+  "labeled_images": 3
+}
+Response (200):
+```json
+{ "status": "ok", "task_id": "string" }
+```
 
 Errors:
 - 404 task not found
 - 400 invalid labels
 
 ---
+
 
 ## 6) Admin (optional for MVP)
 Backend may return 501 until implemented.

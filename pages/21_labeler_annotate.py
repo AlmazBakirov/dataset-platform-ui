@@ -1,13 +1,14 @@
 import streamlit as st
+
 from core.auth import require_role
 from core.config import settings
-from core.api_client import ApiClient
+from core.api_client import ApiClient, ApiError
 from core import mock_backend
 from core.ui import header
 from core.ui_helpers import api_call
 
 require_role(["labeler", "admin", "universal"])
-header("Annotate", "MVP: классификация (выбор классов). Task выбирается на странице My Tasks.")
+header("Annotate", "MVP: классификация. Прогресс + Finish task (UI-ready).")
 
 def client() -> ApiClient:
     return ApiClient(
@@ -16,15 +17,8 @@ def client() -> ApiClient:
         timeout_s=settings.request_timeout_s,
     )
 
-# 1) Берем task_id из session_state (основной сценарий)
 default_task_id = str(st.session_state.get("selected_task_id", "")).strip()
-
-# 2) Оставляем поле ввода как fallback, но не заставляем пользователя копировать
-task_id = st.text_input(
-    "Task ID",
-    value=default_task_id,
-    placeholder="Выберите задачу в My Tasks",
-).strip()
+task_id = st.text_input("Task ID", value=default_task_id, placeholder="Выберите задачу в My Tasks").strip()
 
 if task_id:
     st.session_state["selected_task_id"] = task_id
@@ -48,11 +42,31 @@ if not images:
     st.warning("No images in task.")
     st.stop()
 
-# classes: prefer backend
 classes = task.get("classes") or st.session_state.get("cached_classes") or ["pothole", "crosswalk", "traffic_light", "road_sign"]
 st.session_state["cached_classes"] = classes
 
-# --- индекс изображения (сохранение в session_state, чтобы не сбрасывался) ---
+# ---- Progress ----
+def do_progress():
+    if settings.use_mock:
+        return mock_backend.mock_task_progress(task_id)
+    try:
+        return client().task_progress(task_id)
+    except ApiError as e:
+        # backend not implemented yet: compute local fallback using images and no remote labels
+        if e.status_code in (404, 405, 501):
+            return {"task_id": task_id, "total_images": len(images), "labeled_images": 0}
+        raise
+
+progress = api_call("Load progress", do_progress, spinner="Loading progress...", show_payload=False) or {}
+total_images = int(progress.get("total_images") or len(images))
+labeled_images = int(progress.get("labeled_images") or 0)
+
+m1, m2, m3 = st.columns(3)
+m1.metric("Total images", total_images)
+m2.metric("Labeled", labeled_images)
+m3.metric("Remaining", max(total_images - labeled_images, 0))
+
+# ---- Image index persisted ----
 idx_key = f"img_idx_{task_id}"
 if idx_key not in st.session_state:
     st.session_state[idx_key] = 0
@@ -65,7 +79,6 @@ idx = st.number_input(
     step=1,
 )
 
-# sync index
 st.session_state[idx_key] = int(idx)
 
 img = images[int(idx)]
@@ -81,7 +94,6 @@ if img.get("url"):
 else:
     st.info("Mock: нет URL. В проде backend должен отдавать ссылку на превью/объект в storage.")
 
-# labels key per image to keep selection when navigating
 labels_key = f"labels_{task_id}_{image_id}"
 selected = st.multiselect("Labels", options=classes, key=labels_key)
 
@@ -96,11 +108,21 @@ if st.button("Save labels", type="primary"):
     resp = api_call("Save labels", do_save, spinner="Saving...", show_payload=True)
     if resp is not None:
         st.success("Saved.")
+        # refresh progress
+        api_call("Refresh progress", do_progress, spinner="Refreshing progress...", show_payload=False)
+
         if auto_next and int(idx) < len(images) - 1:
             st.session_state[idx_key] = int(idx) + 1
             st.rerun()
 
 st.divider()
+
+# ---- Finish task ----
+def do_finish():
+    if settings.use_mock:
+        return mock_backend.mock_complete_task(task_id)
+    return client().complete_task(task_id)
+
 c1, c2, c3 = st.columns([1, 1, 2])
 with c1:
     if st.button("Back to My Tasks", key="back_tasks"):
@@ -110,4 +132,11 @@ with c2:
         st.session_state[idx_key] = int(idx) + 1
         st.rerun()
 with c3:
-    st.caption("Task ID берется из My Tasks и хранится в st.session_state['selected_task_id'].")
+    finish_disabled = labeled_images < total_images
+    if st.button("Finish task", type="secondary", disabled=finish_disabled, key="finish_task"):
+        resp = api_call("Complete task", do_finish, spinner="Completing task...", show_payload=True)
+        if resp is not None:
+            st.success("Task completed.")
+            st.switch_page("pages/20_labeler_tasks.py")
+
+st.caption("Finish task активируется, когда размечены все изображения (по progress).")
